@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buffer Overflow Simulator</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; max-width: 800px; margin: auto; color: #333; }
+        .container { display: flex; gap: 40px; margin-top: 20px; }
+        .controls { flex: 1; }
+        .memory-grid { flex: 1; display: flex; flex-direction: column; border: 2px solid #222; border-radius: 4px; overflow: hidden; }
+        .memory-row { display: flex; border-bottom: 1px solid #ccc; height: 35px; align-items: center; }
+        .memory-row:last-child { border-bottom: none; }
+        .addr { width: 100px; background: #f4f4f4; padding-left: 10px; font-size: 13px; font-family: monospace; border-right: 1px solid #ccc; }
+        .val { flex-grow: 1; text-align: center; font-family: monospace; font-size: 16px; font-weight: bold; }
+        .buffer { background-color: #d1e7dd; } /* Green */
+        .sfp { background-color: #fff3cd; } /* Yellow */
+        .ret { background-color: #f8d7da; } /* Red */
+        .overwritten { color: #dc3545; font-weight: 900; animation: blink 1s infinite; }
+        .legend { margin-bottom: 20px; line-height: 1.8; }
+        .box { display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: middle; border: 1px solid #888; }
+        input[type="text"] { width: 100%; padding: 10px; font-size: 16px; margin-top: 10px; box-sizing: border-box; }
+        #status { font-weight: bold; padding: 15px; margin-top: 20px; border-radius: 4px; background: #eee; }
+        
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Stack Buffer Overflow Simulator</h1>
+    <p>This interactive visualization demonstrates how a lack of bounds checking can allow user input to overflow an allocated buffer and overwrite critical control data on the stack.</p>
+    
+    <div class="container">
+        <div class="controls">
+            <div class="legend">
+                <div><div class="box buffer"></div> <strong>Buffer</strong> (8 bytes allocated)</div>
+                <div><div class="box sfp"></div> <strong>Saved Frame Pointer</strong> (4 bytes)</div>
+                <div><div class="box ret"></div> <strong>Return Address</strong> (4 bytes - controls execution flow)</div>
+            </div>
+
+            <label for="userInput"><strong>Input String (Type here):</strong></label>
+            <input type="text" id="userInput" placeholder="Start typing characters..." oninput="updateMemory()">
+            
+            <div id="status">Status: Awaiting input. System safe.</div>
+        </div>
+
+        <div class="memory-grid" id="memGrid">
+            <!-- Populated by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        const memGrid = document.getElementById('memGrid');
+        const statusDiv = document.getElementById('status');
+
+        // Total 16 bytes: 8 (Buffer) + 4 (SFP) + 4 (RET)
+        function initGrid() {
+            memGrid.innerHTML = '';
+            let startAddr = 0xBFFF0000;
+            for (let i = 0; i < 16; i++) {
+                let row = document.createElement('div');
+                row.className = 'memory-row';
+                
+                // Assign colors based on memory region
+                let typeClass = i < 8 ? 'buffer' : (i < 12 ? 'sfp' : 'ret');
+                row.classList.add(typeClass);
+
+                let addr = document.createElement('div');
+                addr.className = 'addr';
+                addr.innerText = '0x' + (startAddr + i).toString(16).toUpperCase();
+
+                let val = document.createElement('div');
+                val.className = 'val';
+                val.id = 'cell-' + i;
+                val.innerText = '00'; // Default null byte
+
+                row.appendChild(addr);
+                row.appendChild(val);
+                memGrid.appendChild(row);
+            }
+        }
+
+        function updateMemory() {
+            let input = document.getElementById('userInput').value;
+            let overflowedSFP = false;
+            let overflowedRET = false;
+
+            for (let i = 0; i < 16; i++) {
+                let cell = document.getElementById('cell-' + i);
+                
+                if (i < input.length) {
+                    // Place character in memory
+                    cell.innerText = input[i];
+                    
+                    if (i >= 8) {
+                        cell.classList.add('overwritten');
+                    }
+                    if (i >= 8 && i < 12) overflowedSFP = true;
+                    if (i >= 12) overflowedRET = true;
+                } else {
+                    // Reset empty cells
+                    cell.innerText = '00';
+                    cell.classList.remove('overwritten');
+                }
+            }
+
+            // Update status dashboard
+            if (overflowedRET) {
+                statusDiv.innerHTML = "<span style='color: #dc3545;'>DANGER! Return Address Overwritten!</span><br>When the function exits, it will try to jump to the address you just injected. This is how arbitrary code execution happens.";
+                statusDiv.style.borderLeft = "5px solid #dc3545";
+            } else if (overflowedSFP) {
+                statusDiv.innerHTML = "<span style='color: #d39e00;'>WARNING: Saved Frame Pointer Corrupted.</span><br>The calling function's base pointer is destroyed, which will cause a crash upon returning.";
+                statusDiv.style.borderLeft = "5px solid #d39e00";
+            } else {
+                statusDiv.innerHTML = "<span style='color: #198754;'>SAFE: Buffer bounds respected.</span><br>The data fits perfectly inside the allocated 8 bytes.";
+                statusDiv.style.borderLeft = "5px solid #198754";
+            }
+        }
+
+        // Initialize on load
+        initGrid();
+    </script>
+</body>
+</html>
